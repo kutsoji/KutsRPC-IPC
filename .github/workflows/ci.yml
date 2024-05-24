@@ -1,35 +1,33 @@
 name: Rust CI
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main  # Change this to your main branch name
+  pull_request:
+    branches:
+      - main  # Change this to your main branch name
 
 jobs:
-  test: 
-    name: Build
+  test:
+    name: Build, Test, Lint, and Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build --verbose
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    
-    name: Run Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --verbose
+      - name: Set up Rust
+        uses: actions/setup-rust@v1
+        with:
+          rust-version: stable
 
-    
-    name: Lint Code
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Build
+        run: cargo build --verbose
 
-    
-    name: Check Formatting
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo fmt -- --check
+      - name: Run Tests
+        run: cargo test --verbose
+
+      - name: Lint Code
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check Formatting
+        run: cargo fmt -- --check
