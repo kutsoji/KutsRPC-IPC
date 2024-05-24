@@ -1,0 +1,12 @@
+[package]
+name = "kutsrpc-ipc"
+authors = ["kutsoji"]
+repository = "https://github.com/kutsoji/kutsrpc-ipc"
+description = "A Rust Impl of Discord Rich Presence using IPC, with cross-platfrom compatibility. 🦀⚡"
+keywords = ["discord", "rpc", "ipc", "rich-presence"]
+version = "0.1.0"
+rust-version = "1.79.0"
+readme = "README.md"
+edition = "2021"
+
+[dependencies]
