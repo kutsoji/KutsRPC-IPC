@@ -8,5 +8,9 @@ version = "0.1.0"
 rust-version = "1.79.0"
 readme = "README.md"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
+serde = { features = ["derive"], version = "1.0.202" }
+serde_json = "1.0.117"
+thiserror = "1.0.61"
