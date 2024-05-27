@@ -17,11 +17,7 @@ pub struct Header {
 
 impl Header {
     pub fn to_bytes(&self) -> Vec<u8> {
-        [
-            (self.opcode as u32).to_le_bytes(),
-            self.length.to_le_bytes(),
-        ]
-        .concat()
+        [self.opcode.to_le_bytes(), self.length.to_le_bytes()].concat()
     }
 }
 

@@ -61,7 +61,10 @@ impl IpcClient for DiscordIpcClient {
                     .read(true)
                     .open(&ipc_path)
                 {
-                    return Ok(self.source = Some(file));
+                    return {
+                        self.source = Some(file);
+                        Ok(())
+                    };
                 } else {
                     continue;
                 }
@@ -74,9 +77,9 @@ impl IpcClient for DiscordIpcClient {
 
     fn connect(&mut self) -> IpcResult<()> {
         if self.source.is_none() {
-            return Err(IpcError::ConnectionError(String::from(
+            Err(IpcError::ConnectionError(String::from(
                 "There is no valid source provided, please open a source first",
-            )));
+            )))
         } else {
             let handshake = Payload::Handshake {
                 v: 1,
@@ -98,11 +101,11 @@ impl IpcClient for DiscordIpcClient {
     fn read(&mut self) -> IpcResult<((u32, u32), String)> {
         if let Some(ref mut source) = &mut self.source {
             let mut header = vec![0u8; 8];
-            source.read(&mut header)?;
+            source.read_exact(&mut header)?;
             let opcode = u32::from_le_bytes(header[..4].try_into().unwrap());
             let length = u32::from_le_bytes(header[4..].try_into().unwrap());
             let mut response = vec![0u8; length as usize];
-            source.read(&mut response)?;
+            source.read_exact(&mut response)?;
             Ok(((opcode, length), from_utf8(&response).unwrap().to_string()))
         } else {
             Err(IpcError::ReadError(String::from(
