@@ -7,10 +7,7 @@ use std::{
 };
 
 use crate::{
-    consts::{
-        IPC_DIR,
-        IPC_PREFIX,
-    },
+    consts::IPC_PREFIX,
     errors::{
         IpcError,
         IpcResult,
@@ -58,7 +55,7 @@ impl IpcClient for DiscordIpcClient {
             Ok(())
         } else {
             for i in 0..9 {
-                let ipc_path = format!("{}{}{}", IPC_DIR, IPC_PREFIX, i);
+                let ipc_path = format!("{}{}{}", crate::consts::IPC_DIR, IPC_PREFIX, i);
                 if let Ok(file) = std::fs::OpenOptions::new()
                     .write(true)
                     .read(true)
