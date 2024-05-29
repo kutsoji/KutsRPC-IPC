@@ -5,6 +5,11 @@ use errors::{
     PayloadResult,
 };
 use serde::{
+    de::{
+        self,
+        MapAccess,
+        Visitor,
+    },
     Deserialize,
     Deserializer,
     Serialize,
@@ -14,9 +19,12 @@ use serde_json::{
     Value,
 };
 
-use crate::errors;
+use crate::{
+    errors,
+    events::Event,
+};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub enum Payload {
     Handshake {
         v: u8,
@@ -26,14 +34,14 @@ pub enum Payload {
         cmd: String,
         nonce: i64,
         args: serde_json::Value,
-        evt: Option<String>,
+        evt: Option<Event>,
     },
     InComingCommand {
         cmd: String,
         nonce: i64,
         args: Option<serde_json::Value>,
         data: serde_json::Value,
-        evt: Option<String>,
+        evt: Option<Event>,
     },
     CriticalError {
         code: u32,
@@ -76,7 +84,7 @@ impl<'de> Deserialize<'de> for Payload {
     {
         struct PayloadVisitor;
 
-        impl<'de> serde::de::Visitor<'de> for PayloadVisitor {
+        impl<'de> Visitor<'de> for PayloadVisitor {
             type Value = Payload;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -85,7 +93,7 @@ impl<'de> Deserialize<'de> for Payload {
 
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
-                V: serde::de::MapAccess<'de>,
+                V: MapAccess<'de>,
             {
                 let mut v = None;
                 let mut client_id = None;
@@ -97,59 +105,59 @@ impl<'de> Deserialize<'de> for Payload {
                 let mut code = None;
                 let mut message = None;
 
-                while let Some(key) = map.next_key()? {
-                    match key {
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
                         "v" => {
                             if v.is_some() {
-                                return Err(serde::de::Error::duplicate_field("v"));
+                                return Err(de::Error::duplicate_field("v"));
                             }
                             v = Some(map.next_value()?);
                         }
                         "client_id" => {
                             if client_id.is_some() {
-                                return Err(serde::de::Error::duplicate_field("client_id"));
+                                return Err(de::Error::duplicate_field("client_id"));
                             }
                             client_id = Some(map.next_value()?);
                         }
                         "cmd" => {
                             if cmd.is_some() {
-                                return Err(serde::de::Error::duplicate_field("cmd"));
+                                return Err(de::Error::duplicate_field("cmd"));
                             }
                             cmd = Some(map.next_value()?);
                         }
                         "nonce" => {
                             if nonce.is_some() {
-                                return Err(serde::de::Error::duplicate_field("nonce"));
+                                return Err(de::Error::duplicate_field("nonce"));
                             }
                             nonce = Some(map.next_value::<Option<i64>>()?.unwrap_or_default());
                         }
                         "args" => {
                             if args.is_some() {
-                                return Err(serde::de::Error::duplicate_field("args"));
+                                return Err(de::Error::duplicate_field("args"));
                             }
                             args = Some(map.next_value()?);
                         }
                         "data" => {
                             if data.is_some() {
-                                return Err(serde::de::Error::duplicate_field("data"));
+                                return Err(de::Error::duplicate_field("data"));
                             }
                             data = Some(map.next_value()?);
                         }
                         "evt" => {
                             if evt.is_some() {
-                                return Err(serde::de::Error::duplicate_field("evt"));
+                                return Err(de::Error::duplicate_field("evt"));
                             }
-                            evt = Some(map.next_value()?);
+                            evt = Some(map.next_value::<Option<Event>>()?);
                         }
                         "code" => {
                             if code.is_some() {
-                                return Err(serde::de::Error::duplicate_field("code"));
+                                return Err(de::Error::duplicate_field("code"));
                             }
                             code = Some(map.next_value()?);
                         }
                         "message" => {
                             if message.is_some() {
-                                return Err(serde::de::Error::duplicate_field("message"));
+                                return Err(de::Error::duplicate_field("message"));
                             }
                             message = Some(map.next_value()?);
                         }
@@ -161,8 +169,8 @@ impl<'de> Deserialize<'de> for Payload {
 
                 if let (Some(v), Some(client_id)) = (v, client_id) {
                     Ok(Payload::Handshake { v, client_id })
-                } else if let (Some(cmd), args, Some(data), Some(nonce)) =
-                    (cmd.clone(), args.clone(), data, nonce)
+                } else if let (Some(cmd), Some(nonce), Some(data), Some(evt)) =
+                    (cmd.clone(), nonce, data, evt.clone())
                 {
                     Ok(Payload::InComingCommand {
                         cmd,
@@ -171,7 +179,9 @@ impl<'de> Deserialize<'de> for Payload {
                         data,
                         evt,
                     })
-                } else if let (Some(cmd), Some(args), Some(nonce)) = (cmd, args, nonce) {
+                } else if let (Some(cmd), Some(nonce), Some(args), Some(evt)) =
+                    (cmd, nonce, args, evt)
+                {
                     Ok(Payload::OutGoingCommand {
                         cmd,
                         nonce,

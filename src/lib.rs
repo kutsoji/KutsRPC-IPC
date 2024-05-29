@@ -1,5 +1,8 @@
 mod consts;
 mod errors;
+mod events;
+pub use errors::*;
+pub use events::Event;
 mod ipc;
 mod payload;
 use errors::PacketResult;

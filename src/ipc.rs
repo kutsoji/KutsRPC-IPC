@@ -13,6 +13,11 @@ use crate::{
         IpcResult,
         PacketError,
     },
+    events::{
+        Event,
+        EventHandler,
+    },
+    Header,
     Packet,
     Payload,
 };
@@ -20,18 +25,20 @@ pub trait IpcClient {
     fn open(&mut self) -> IpcResult<()>;
     fn connect(&mut self) -> IpcResult<()>;
     fn reconnect(&self) -> IpcResult<()>;
-    fn read(&mut self) -> IpcResult<((u32, u32), String)>;
+    fn read(&mut self) -> IpcResult<Packet>;
     fn write(&mut self, packet: Packet) -> IpcResult<()>;
-}
-
-pub enum IpcConnectionStatus {
-    Connected,
-    Disconnected,
+    fn on<Callback: FnMut(Payload) + Send + 'static>(
+        &self,
+        ev: Event,
+        cb: Callback,
+    ) -> IpcResult<()>;
+    fn disconnect(&mut self) -> IpcResult<()>;
 }
 
 pub struct DiscordIpcClient {
     app_id: &'static str,
-    status: IpcConnectionStatus,
+    connected: bool,
+    event_handler: EventHandler,
     #[cfg(windows)]
     source: Option<std::fs::File>,
     #[cfg(unix)]
@@ -42,8 +49,9 @@ impl DiscordIpcClient {
     pub fn new(app_id: &'static str) -> Self {
         Self {
             app_id,
-            status: IpcConnectionStatus::Disconnected,
+            connected: false,
             source: None,
+            event_handler: EventHandler::new(),
         }
     }
 }
@@ -70,7 +78,7 @@ impl IpcClient for DiscordIpcClient {
                 }
             }
             Err(IpcError::OpenError(String::from(
-                "Couldn't find an availble discord ipc path",
+                "Couldn't find an available discord ipc path",
             )))
         }
     }
@@ -80,6 +88,8 @@ impl IpcClient for DiscordIpcClient {
             Err(IpcError::ConnectionError(String::from(
                 "There is no valid source provided, please open a source first",
             )))
+        } else if self.connected {
+            Err(IpcError::ConnectionError(String::from("Already connected")))
         } else {
             let handshake = Payload::Handshake {
                 v: 1,
@@ -98,7 +108,7 @@ impl IpcClient for DiscordIpcClient {
         todo!()
     }
 
-    fn read(&mut self) -> IpcResult<((u32, u32), String)> {
+    fn read(&mut self) -> IpcResult<Packet> {
         if let Some(ref mut source) = &mut self.source {
             let mut header = vec![0u8; 8];
             source.read_exact(&mut header)?;
@@ -106,7 +116,10 @@ impl IpcClient for DiscordIpcClient {
             let length = u32::from_le_bytes(header[4..].try_into().unwrap());
             let mut response = vec![0u8; length as usize];
             source.read_exact(&mut response)?;
-            Ok(((opcode, length), from_utf8(&response).unwrap().to_string()))
+            Ok(Packet {
+                header: Header { opcode, length },
+                payload: serde_json::from_str::<Payload>(from_utf8(&response).unwrap())?,
+            })
         } else {
             Err(IpcError::ReadError(String::from(
                 "There is no valid source provided, please open a source first",
@@ -119,11 +132,59 @@ impl IpcClient for DiscordIpcClient {
             let (header, data) = packet.to_bytes()?;
             source.write_all(&header)?;
             source.write_all(&data)?;
+
+            let res = self.read()?;
+            match res.payload {
+                Payload::InComingCommand {
+                    cmd: _,
+                    nonce: _,
+                    args: _,
+                    data: _,
+                    evt: Some(ref event),
+                } => {
+                    let ev_clone = event.clone();
+                    self.event_handler.emit(ev_clone.clone(), res.payload);
+                    if ev_clone == Event::Ready {
+                        self.connected = true;
+                    }
+                }
+                Payload::Empty {} => {
+                    if res.header.opcode == 0x0003 {
+                        self.write(Packet::new(0x0004, Payload::Empty {})?)?
+                    }
+                }
+                _ => (),
+            }
+
             Ok(())
         } else {
             Err(IpcError::WriteError(String::from(
                 "There is no valid source provided, please open a source first",
             )))
         }
+    }
+
+    fn on<Callback>(&self, ev: Event, mut cb: Callback) -> IpcResult<()>
+    where
+        Callback: FnMut(Payload) + Send + 'static,
+    {
+        if self.connected {
+            self.event_handler.listen(
+                move |event| {
+                    cb(event);
+                },
+                ev,
+            );
+            Ok(())
+        } else {
+            Err(IpcError::EventError)
+        }
+    }
+
+    fn disconnect(&mut self) -> IpcResult<()> {
+        self.write(Packet::new(0x0002, Payload::Empty {})?)?;
+        self.connected = false;
+        self.event_handler.stop();
+        Ok(())
     }
 }

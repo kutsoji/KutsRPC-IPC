@@ -1,6 +1,4 @@
-use thiserror::Error;
-
-#[derive(Error, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum PayloadError {
     #[error("Failed to convert the payload into a JSON value: {0}")]
     SerdeJsonError(#[from] serde_json::Error),
@@ -9,7 +7,7 @@ pub enum PayloadError {
     ToJsonError,
 }
 
-#[derive(Error, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum PacketError {
     #[error("serde_json error: {0}")]
     SerdeJsonError(#[from] serde_json::Error),
@@ -24,7 +22,7 @@ pub enum PacketError {
     ReceiveError,
 }
 
-#[derive(Error, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum IpcError {
     #[error("Failed to open an ipc connection: {0}")]
     OpenError(String),
@@ -41,11 +39,28 @@ pub enum IpcError {
     #[error("Failed to read from discord ipc: {0}")]
     ReadError(String),
 
-    #[error("Failed to write from discord ipc: {0}")]
+    #[error("Failed to write to discord ipc: {0}")]
     WriteError(String),
 
     #[error("Io Error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Io Error: {0}")]
+    SerdeJsonError(#[from] serde_json::Error),
+
+    #[error("You should connect to discord ipc before tryig to listen to events")]
+    EventError,
+}
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("{0}")]
+    Ipc(#[from] IpcError),
+
+    #[error("{0}")]
+    Packet(#[from] PacketError),
+
+    #[error("{0}")]
+    Payload(#[from] PayloadError),
 }
 
 pub(crate) type PayloadResult<T> = Result<T, PayloadError>;
