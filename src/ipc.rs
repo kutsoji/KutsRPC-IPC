@@ -1,10 +1,4 @@
-use std::{
-    io::{
-        Read,
-        Write,
-    },
-    str::from_utf8,
-};
+use serde_json::json;
 
 use crate::{
     consts::IPC_PREFIX,
@@ -17,22 +11,22 @@ use crate::{
         Event,
         EventHandler,
     },
+    Activity,
     Header,
     Packet,
     Payload,
 };
+use std::{
+    io::{
+        Read,
+        Write,
+    },
+    str::from_utf8,
+};
 pub trait IpcClient {
     fn open(&mut self) -> IpcResult<()>;
-    fn connect(&mut self) -> IpcResult<()>;
-    fn reconnect(&self) -> IpcResult<()>;
     fn read(&mut self) -> IpcResult<Packet>;
     fn write(&mut self, packet: Packet) -> IpcResult<()>;
-    fn on<Callback: FnMut(Payload) + Send + 'static>(
-        &self,
-        ev: Event,
-        cb: Callback,
-    ) -> IpcResult<()>;
-    fn disconnect(&mut self) -> IpcResult<()>;
 }
 
 pub struct DiscordIpcClient {
@@ -53,6 +47,86 @@ impl DiscordIpcClient {
             source: None,
             event_handler: EventHandler::new(),
         }
+    }
+
+    pub fn connect(&mut self) -> IpcResult<()> {
+        if self.source.is_none() {
+            Err(IpcError::ConnectionError(String::from(
+                "There is no valid source provided, please open a source first",
+            )))
+        } else if self.connected {
+            Err(IpcError::ConnectionError(String::from("Already connected")))
+        } else {
+            let handshake = Payload::Handshake {
+                v: 1,
+                client_id: self.app_id.to_owned(),
+            };
+            let packet = match Packet::new(0x0000, handshake) {
+                Ok(p) => p,
+                Err(_) => return Err(IpcError::HandshakeError(PacketError::SendError)),
+            };
+            self.write(packet)?;
+            Ok(())
+        }
+    }
+
+    pub fn reconnect(&self) -> IpcResult<()> {
+        todo!()
+    }
+
+    pub fn set_activity(&mut self, activity: Activity) -> IpcResult<()> {
+        self.write(Packet::new(
+            0x0001,
+            Payload::OutGoingCommand {
+                cmd: "SET_ACTIVITY".into(),
+                nonce: uuid::Uuid::new_v4().as_u128() as i64,
+                args: json!({
+                    "pid": std::process::id(),
+                    "activity": serde_json::to_value(activity)?
+                }),
+                evt: None,
+            },
+        )?)?;
+        Ok(())
+    }
+
+    pub fn clear_activity(&mut self) -> IpcResult<()> {
+        self.write(Packet::new(
+            0x0001,
+            Payload::OutGoingCommand {
+                cmd: "SET_ACTIVITY".into(),
+                nonce: uuid::Uuid::new_v4().as_u128() as i64,
+                args: json!({
+                    "pid": std::process::id()
+                }),
+                evt: None,
+            },
+        )?)?;
+        Ok(())
+    }
+
+    pub fn on<Callback>(&self, ev: Event, mut cb: Callback) -> IpcResult<()>
+    where
+        Callback: FnMut(Payload) + Send + 'static,
+    {
+        if self.connected {
+            self.event_handler.listen(
+                move |event| {
+                    cb(event);
+                },
+                ev,
+            );
+            Ok(())
+        } else {
+            Err(IpcError::EventError)
+        }
+    }
+
+    pub fn disconnect(&mut self) -> IpcResult<()> {
+        self.write(Packet::new(0x0002, Payload::Empty {})?)?;
+        self.connected = false;
+        self.event_handler.stop();
+        Ok(())
     }
 }
 
@@ -81,31 +155,6 @@ impl IpcClient for DiscordIpcClient {
                 "Couldn't find an available discord ipc path",
             )))
         }
-    }
-
-    fn connect(&mut self) -> IpcResult<()> {
-        if self.source.is_none() {
-            Err(IpcError::ConnectionError(String::from(
-                "There is no valid source provided, please open a source first",
-            )))
-        } else if self.connected {
-            Err(IpcError::ConnectionError(String::from("Already connected")))
-        } else {
-            let handshake = Payload::Handshake {
-                v: 1,
-                client_id: self.app_id.to_owned(),
-            };
-            let packet = match Packet::new(0x0000, handshake) {
-                Ok(p) => p,
-                Err(_) => return Err(IpcError::HandshakeError(PacketError::SendError)),
-            };
-            self.write(packet)?;
-            Ok(())
-        }
-    }
-
-    fn reconnect(&self) -> IpcResult<()> {
-        todo!()
     }
 
     fn read(&mut self) -> IpcResult<Packet> {
@@ -148,6 +197,9 @@ impl IpcClient for DiscordIpcClient {
                         self.connected = true;
                     }
                 }
+                Payload::CriticalError { code: _, message } => {
+                    return Err(IpcError::CriticalError(message));
+                }
                 Payload::Empty {} => {
                     if res.header.opcode == 0x0003 {
                         self.write(Packet::new(0x0004, Payload::Empty {})?)?
@@ -162,29 +214,5 @@ impl IpcClient for DiscordIpcClient {
                 "There is no valid source provided, please open a source first",
             )))
         }
-    }
-
-    fn on<Callback>(&self, ev: Event, mut cb: Callback) -> IpcResult<()>
-    where
-        Callback: FnMut(Payload) + Send + 'static,
-    {
-        if self.connected {
-            self.event_handler.listen(
-                move |event| {
-                    cb(event);
-                },
-                ev,
-            );
-            Ok(())
-        } else {
-            Err(IpcError::EventError)
-        }
-    }
-
-    fn disconnect(&mut self) -> IpcResult<()> {
-        self.write(Packet::new(0x0002, Payload::Empty {})?)?;
-        self.connected = false;
-        self.event_handler.stop();
-        Ok(())
     }
 }

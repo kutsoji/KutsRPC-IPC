@@ -9,6 +9,7 @@ use std::{
         Mutex,
     },
     thread,
+    time::Duration,
 };
 
 use serde::{
@@ -94,7 +95,7 @@ impl EventHandler {
                     Ok(event) => {
                         if ev == event.0 {
                             callback(event.1);
-                            break;
+                            thread::sleep(Duration::from_millis(100))
                         }
                     }
                     Err(_) => {

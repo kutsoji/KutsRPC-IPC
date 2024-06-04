@@ -1,6 +1,8 @@
+mod activity;
 mod consts;
 mod errors;
 mod events;
+pub use activity::Activity;
 pub use errors::*;
 pub use events::Event;
 mod ipc;

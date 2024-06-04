@@ -50,6 +50,9 @@ pub enum IpcError {
 
     #[error("You should connect to discord ipc before tryig to listen to events")]
     EventError,
+
+    #[error("Discord Ipc sent a critical error with message: {0}")]
+    CriticalError(String),
 }
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
