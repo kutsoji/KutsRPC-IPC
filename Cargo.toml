@@ -13,5 +13,5 @@ license = "MIT"
 [dependencies]
 serde = { features = ["derive"], version = "*" }
 serde_json = "*"
-thiserror = "*"
+thiserror = "1.0"
 uuid = { features = ["v4"], version = "*" }
